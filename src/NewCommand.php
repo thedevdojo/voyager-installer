@@ -1,6 +1,6 @@
 <?php
 
-namespace Laravel\Installer\Console;
+namespace Voyager\Installer\Console;
 
 use ZipArchive;
 use RuntimeException;
@@ -62,6 +62,7 @@ class NewCommand extends Command
         $composer = $this->findComposer();
 
         $commands = [
+            $composer.' require tcg/voyager',
             $composer.' install --no-scripts',
             $composer.' run-script post-root-package-install',
             $composer.' run-script post-create-project-cmd',
