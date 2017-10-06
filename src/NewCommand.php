@@ -13,6 +13,7 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Filesystem\Exception\IOExceptionInterface;
+use Symfony\Component\Console\Question\Question;
 use Dotenv\Dotenv;
 
 
@@ -30,14 +31,8 @@ class NewCommand extends Command
         $this
             ->setName('new')
             ->setDescription('Create a new Laravel application.')
-            ->addArgument('app_url', InputArgument::OPTIONAL, 'APP_URL? (http://localhost)')
-            ->addArgument('db_connection', InputArgument::OPTIONAL, 'DB_CONNECTION? (mysql)')
-            ->addArgument('db_host', InputArgument::OPTIONAL, 'DB_HOST? (127.0.0.1)')
-            ->addArgument('db_port', InputArgument::OPTIONAL, 'DB_PORT? (3306)')
-            ->addArgument('db_database', InputArgument::OPTIONAL, 'DB_DATABASE? (homestead)')
-            ->addArgument('db_username', InputArgument::OPTIONAL, 'DB_USERNAME? (homestead)')
-            ->addArgument('db_password', InputArgument::OPTIONAL, 'DB_PASSWORD? (secret)')
             ->addArgument('name', InputArgument::OPTIONAL)
+            ->addOption('database', null, InputOption::VALUE_NONE, 'Will prompt for more database fields, such as connection, host, and port')
             ->addOption('dev', null, InputOption::VALUE_NONE, 'Installs the latest "development" release')
             ->addOption('force', null, InputOption::VALUE_NONE, 'Forces install even if the directory already exists');
     
@@ -52,6 +47,8 @@ class NewCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output)
     {
+        
+
         if (! class_exists('ZipArchive')) {
             throw new RuntimeException('The Zip PHP extension is not installed. Please install it and try again.');
         }
@@ -62,7 +59,8 @@ class NewCommand extends Command
             $this->verifyApplicationDoesntExist($directory);
         }
 
-        $output->writeln('<info>Ahoy Matey! Welcome to the Voyager Installer.</info>');
+        $this->printASCII($output);
+        $output->writeln('<info>Ahoy Matey! Welcome to the Voyager Installer!</info>');
 
         $version = $this->getVersion($input);
 
@@ -73,31 +71,33 @@ class NewCommand extends Command
 
         $composer = $this->findComposer();
 
-        $this->dotenv = new Dotenv('./' . $directory . '/'.__DIR__);
-        $this->dotenv->load();
+        $helper = $this->getHelper('question');
+        $output->writeln('<info>After you\'ve created a database for this application, enter in the credentials below:</info>');
 
-        $output->writeln('<info>Yarr! What be your URL and DB Details?</info>');
+        if($input->getOption('database')){
 
-        $app_url = $input->getArgument('app_url');
-        $this->changeEnvironmentVariable($directory, 'APP_URL', $app_url);
+            $db_connection_q = new Question('DB_CONNECTION=', 'mysql');
+            $db_connection = $helper->ask($input, $output, $db_connection_q);
+            $db_host_q = new Question('DB_HOST=', '127.0.0.1');
+            $db_host = $helper->ask($input, $output, $db_host_q);
+            $db_port_q = new Question('DB_PORT=', '3306');
+            $db_port = $helper->ask($input, $output, $db_port_q);
+        }
 
-        $db_connection = $input->getArgument('db_connection');
-        $this->changeEnvironmentVariable($directory, 'DB_CONNECTION', $db_connection);
+        $db_database_q = new Question('DB_DATABASE=', '');
+        $db_database = $helper->ask($input, $output, $db_database_q);
 
-        $db_host = $input->getArgument('db_host');
-        $this->changeEnvironmentVariable($directory, 'DB_HOST', $db_host);
+        $db_username_q = new Question('DB_USERNAME=', '');
+        $db_username = $helper->ask($input, $output, $db_username_q);
 
-        $db_port = $input->getArgument('db_port');
-        $this->changeEnvironmentVariable($directory, 'DB_PORT', $db_port);
+        $db_password_q = new Question('DB_PASSWORD=', '');
+        $db_password = $helper->ask($input, $output, $db_password_q);
 
-        $db_database = $input->getArgument('db_database');
-        $this->changeEnvironmentVariable($directory, 'DB_DATABASE', $db_database);
 
-        $db_username = $input->getArgument('db_username');
-        $this->changeEnvironmentVariable($directory, 'DB_USERNAME', $db_username);
+        $output->writeln('<info>Finally, we just need your application URL to finish the install:</info>');
 
-        $db_password = $input->getArgument('db_password');
-        $this->changeEnvironmentVariable($directory, 'DB_PASSWORD', $db_password);      
+        $app_url_q = new Question('APP_URL=', 'app_url');
+        $app_url = $helper->ask($input, $output, $app_url_q);
 
 
         $output->writeln('<info>Setting Sail! Crafting your new application...</info>');
@@ -132,6 +132,37 @@ class NewCommand extends Command
             $output->write($line);
         });
 
+        $output->writeln('<info>Updating Environment Variables</info>');
+        $this->dotenv = new Dotenv($directory);
+        $this->dotenv->load();
+        $this->changeEnvironmentVariable($directory, 'APP_URL', $app_url);
+
+        if($input->getOption('database')){
+            $this->changeEnvironmentVariable($directory, 'DB_CONNECTION', $db_connection);
+            $this->changeEnvironmentVariable($directory, 'DB_HOST', $db_host);
+            $this->changeEnvironmentVariable($directory, 'DB_PORT', $db_port);
+        }
+
+        $this->changeEnvironmentVariable($directory, 'DB_DATABASE', $db_database);
+        $this->changeEnvironmentVariable($directory, 'DB_USERNAME', $db_username);
+        $this->changeEnvironmentVariable($directory, 'DB_PASSWORD', $db_password);
+
+        // Load new modified dot env
+        $this->dotenv = new Dotenv($directory);
+        $this->dotenv->load();
+
+        $output->writeln('<info>Installing Voyager assets and migrations...</info>');
+
+        $process = new Process('cd '.$directory.' && php artisan cache:clear && php artisan config:clear && php artisan voyager:install --with-dummy && open ' . trim($app_url, '/') . '/admin');
+
+        if ('\\' !== DIRECTORY_SEPARATOR && file_exists('/dev/tty') && is_readable('/dev/tty')) {
+            $process->setTty(true);
+        }
+
+        $process->run(function ($type, $line) use ($output) {
+            $output->write($line);
+        });
+
         $output->writeln('<comment>Application ready! Build something amazing.</comment>');
     }
 
@@ -148,6 +179,17 @@ class NewCommand extends Command
         }
     }
 
+    protected function printASCII($output){
+        $output->writeln('                                          ');
+        $output->writeln('  _    __                                 ');
+        $output->writeln(' | |  / /___  __  ______ _____ ____  _____');
+        $output->writeln(' | | / / __ \/ / / / __ `/ __ `/ _ \/ ___/');
+        $output->writeln(' | |/ / /_/ / /_/ / /_/ / /_/ /  __/ /    ');    
+        $output->writeln(' |___/\____/\__, /\__,_/\__, /\___/_/     ');    
+        $output->writeln('           /____/      /____/             ');    
+        $output->writeln('                                          ');
+    }
+
     /**
      * Change Environment variables
      * @param  string $key
@@ -156,17 +198,18 @@ class NewCommand extends Command
      */
     protected function changeEnvironmentVariable($directory, $key,$value)
     {
-        $path = './' . $directory . '/.env';
-
-        if(is_bool(getenv($key)))
+        $path = $directory . '/.env';
+        $old = '';
+        if(!empty(getenv($key)))
         {
-            $old = getenv($key)? 'true' : 'false';
+            $old = getenv($key);
         }
 
         if (file_exists($path)) {
             file_put_contents($path, str_replace(
                 "$key=".$old, "$key=".$value, file_get_contents($path)
             ));
+            putenv($key. '=' . $value);
         }
     }
 
