@@ -8,6 +8,6 @@ if (file_exists(__DIR__.'/../../autoload.php')) {
 }
 
 $app = new Symfony\Component\Console\Application('Voyager Installer', '1.0');
-$app->add(new Laravel\Installer\Console\NewCommand);
+$app->add(new Voyager\Installer\Console\NewCommand);
 
 $app->run();

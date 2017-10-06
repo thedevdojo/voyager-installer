@@ -13,9 +13,13 @@ use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Filesystem\Exception\IOExceptionInterface;
+use Dotenv\Dotenv;
+
 
 class NewCommand extends Command
 {
+    private $dotenv;
+
     /**
      * Configure the command options.
      *
@@ -26,9 +30,17 @@ class NewCommand extends Command
         $this
             ->setName('new')
             ->setDescription('Create a new Laravel application.')
+            ->addArgument('app_url', InputArgument::OPTIONAL, 'APP_URL? (http://localhost)')
+            ->addArgument('db_connection', InputArgument::OPTIONAL, 'DB_CONNECTION? (mysql)')
+            ->addArgument('db_host', InputArgument::OPTIONAL, 'DB_HOST? (127.0.0.1)')
+            ->addArgument('db_port', InputArgument::OPTIONAL, 'DB_PORT? (3306)')
+            ->addArgument('db_database', InputArgument::OPTIONAL, 'DB_DATABASE? (homestead)')
+            ->addArgument('db_username', InputArgument::OPTIONAL, 'DB_USERNAME? (homestead)')
+            ->addArgument('db_password', InputArgument::OPTIONAL, 'DB_PASSWORD? (secret)')
             ->addArgument('name', InputArgument::OPTIONAL)
             ->addOption('dev', null, InputOption::VALUE_NONE, 'Installs the latest "development" release')
             ->addOption('force', null, InputOption::VALUE_NONE, 'Forces install even if the directory already exists');
+    
     }
 
     /**
@@ -50,7 +62,7 @@ class NewCommand extends Command
             $this->verifyApplicationDoesntExist($directory);
         }
 
-        $output->writeln('<info>Crafting application...</info>');
+        $output->writeln('<info>Ahoy Matey! Welcome to the Voyager Installer.</info>');
 
         $version = $this->getVersion($input);
 
@@ -61,6 +73,35 @@ class NewCommand extends Command
 
         $composer = $this->findComposer();
 
+        $this->dotenv = new Dotenv('./' . $directory . '/'.__DIR__);
+        $this->dotenv->load();
+
+        $output->writeln('<info>Yarr! What be your URL and DB Details?</info>');
+
+        $app_url = $input->getArgument('app_url');
+        $this->changeEnvironmentVariable($directory, 'APP_URL', $app_url);
+
+        $db_connection = $input->getArgument('db_connection');
+        $this->changeEnvironmentVariable($directory, 'DB_CONNECTION', $db_connection);
+
+        $db_host = $input->getArgument('db_host');
+        $this->changeEnvironmentVariable($directory, 'DB_HOST', $db_host);
+
+        $db_port = $input->getArgument('db_port');
+        $this->changeEnvironmentVariable($directory, 'DB_PORT', $db_port);
+
+        $db_database = $input->getArgument('db_database');
+        $this->changeEnvironmentVariable($directory, 'DB_DATABASE', $db_database);
+
+        $db_username = $input->getArgument('db_username');
+        $this->changeEnvironmentVariable($directory, 'DB_USERNAME', $db_username);
+
+        $db_password = $input->getArgument('db_password');
+        $this->changeEnvironmentVariable($directory, 'DB_PASSWORD', $db_password);      
+
+
+        $output->writeln('<info>Setting Sail! Crafting your new application...</info>');
+        
         $commands = [
             $composer.' require tcg/voyager',
             $composer.' install --no-scripts',
@@ -104,6 +145,28 @@ class NewCommand extends Command
     {
         if ((is_dir($directory) || is_file($directory)) && $directory != getcwd()) {
             throw new RuntimeException('Application already exists!');
+        }
+    }
+
+    /**
+     * Change Environment variables
+     * @param  string $key
+     * @param  string $value
+     * @return void
+     */
+    protected function changeEnvironmentVariable($directory, $key,$value)
+    {
+        $path = './' . $directory . '/.env';
+
+        if(is_bool(getenv($key)))
+        {
+            $old = getenv($key)? 'true' : 'false';
+        }
+
+        if (file_exists($path)) {
+            file_put_contents($path, str_replace(
+                "$key=".$old, "$key=".$value, file_get_contents($path)
+            ));
         }
     }
 
